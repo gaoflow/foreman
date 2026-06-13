@@ -104,6 +104,20 @@ class GitHubDaemonHost:
         issue = repo_obj.get_issue(issue_number)
         return [lbl.name for lbl in issue.labels]
 
+    def set_issue_labels(
+        self, repo: str, issue_number: int, labels: set[str]
+    ) -> None:
+        # foreman#307 LabelManager: atomic label replacement, one PUT.
+        # This is the only daemon_host method that calls PyGithub's
+        # set_labels — every higher-level label-write surface goes
+        # through LabelManager.transition() and routes here for the
+        # actual API call. See _LABEL_WRITER_GREP_ALLOWLIST in
+        # foreman.label_manager.
+        gh = self._registry.get_orchestrator_client()
+        repo_obj = gh.get_repo(repo)
+        issue = repo_obj.get_issue(issue_number)
+        issue.set_labels(*sorted(labels))
+
     def close_issue(self, repo: str, issue_number: int) -> None:
         gh = self._registry.get_orchestrator_client()
         repo_obj = gh.get_repo(repo)

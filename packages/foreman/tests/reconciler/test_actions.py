@@ -143,6 +143,24 @@ class _FakeHost:
     def remove_label(self, *, owner: str, repo: str, issue: int, label: str) -> None:
         self.calls.append(("remove_label", {"owner": owner, "repo": repo, "issue": issue, "label": label}))
 
+    # foreman#307 LabelManager: per-test-injectable label state for the
+    # ReconcilerHostLabelWriter adapter to read.
+    get_labels_return: set[str] = field(default_factory=set)
+
+    def get_labels(self, *, owner: str, repo: str, issue: int) -> set[str]:
+        self.calls.append(("get_labels", {"owner": owner, "repo": repo, "issue": issue}))
+        return set(self.get_labels_return)
+
+    def set_labels(
+        self, *, owner: str, repo: str, issue: int, labels: set[str]
+    ) -> None:
+        self.calls.append(
+            (
+                "set_labels",
+                {"owner": owner, "repo": repo, "issue": issue, "labels": set(labels)},
+            )
+        )
+
     def post_comment(self, *, owner: str, repo: str, issue: int, body: str) -> None:
         self.calls.append(("post_comment", {"owner": owner, "repo": repo, "issue": issue, "body": body}))
 
@@ -416,6 +434,8 @@ def test_dispatch_role_uses_snapshot_project_not_host_default(tmp_path: Path) ->
 
         def add_label(self, **k: Any) -> None: ...
         def remove_label(self, **k: Any) -> None: ...
+        def get_labels(self, **k: Any) -> set[str]: return set()
+        def set_labels(self, **k: Any) -> None: ...
         def post_comment(self, **k: Any) -> None: ...
         def merge_pr(self, **k: Any) -> None: ...
 

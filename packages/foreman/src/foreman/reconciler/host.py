@@ -45,6 +45,30 @@ class ReconcilerHost(Protocol):
 
     def add_label(self, *, owner: str, repo: str, issue: int, label: str) -> None: ...
     def remove_label(self, *, owner: str, repo: str, issue: int, label: str) -> None: ...
+    def get_labels(self, *, owner: str, repo: str, issue: int) -> set[str]:
+        """Return the live ``foreman:*`` + ancillary label-name set on
+        an issue. The :class:`~foreman.label_manager.ReconcilerHostLabelWriter`
+        adapter calls this to read state before applying invariants —
+        the host MUST NOT cache; reading must hit the GitHub API.
+
+        Added for foreman#307's LabelManager. Symmetric to
+        :meth:`set_labels`.
+        """
+        ...
+    def set_labels(
+        self, *, owner: str, repo: str, issue: int, labels: set[str]
+    ) -> None:
+        """Atomically replace the issue's label set with ``labels``.
+        One PUT, not two. The :class:`~foreman.label_manager.LabelManager`
+        relies on this being atomic so the QUEUE-strips-IN_FLIGHT
+        invariant lands as a single transition rather than a remove
+        + add pair that can leave the issue in a stuck intermediate
+        state if the second call fails.
+
+        Added for foreman#307's LabelManager. Symmetric to
+        :meth:`get_labels`.
+        """
+        ...
     def post_comment(self, *, owner: str, repo: str, issue: int, body: str) -> None: ...
     def merge_pr(
         self,

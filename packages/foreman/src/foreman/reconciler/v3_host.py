@@ -476,6 +476,20 @@ class V3GitHubHost:
     def remove_label(self, *, owner: str, repo: str, issue: int, label: str) -> None:
         self._v2.remove_issue_label(f"{owner}/{repo}", issue, label)
 
+    def get_labels(self, *, owner: str, repo: str, issue: int) -> set[str]:
+        # foreman#307 LabelManager: read live label state for the
+        # ReconcilerHostLabelWriter adapter. Delegates to the existing
+        # v2 host method, returning a set rather than a list so the
+        # manager's set algebra works directly.
+        return set(self._v2.get_issue_labels(f"{owner}/{repo}", issue))
+
+    def set_labels(
+        self, *, owner: str, repo: str, issue: int, labels: set[str]
+    ) -> None:
+        # foreman#307 LabelManager: atomic label replacement for the
+        # ReconcilerHostLabelWriter adapter. One PUT, not two.
+        self._v2.set_issue_labels(f"{owner}/{repo}", issue, labels)
+
     def post_comment(self, *, owner: str, repo: str, issue: int, body: str) -> None:
         self._v2.post_issue_comment(f"{owner}/{repo}", issue, body)
 

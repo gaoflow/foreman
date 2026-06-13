@@ -13,9 +13,8 @@ manager exists to eliminate.
 
 from __future__ import annotations
 
+import ast
 import logging
-import re
-import tokenize
 from pathlib import Path
 
 import pytest
@@ -347,68 +346,70 @@ class TestTransitionTerminalInvariant:
 # ---------------------------------------------------------------------------
 
 
-_FORBIDDEN_SYMBOLS = ("add_to_labels", "remove_from_labels", "set_labels")
+_FORBIDDEN_PYGITHUB_METHODS = frozenset(
+    {"add_to_labels", "remove_from_labels", "set_labels"}
+)
 
 
-def _strip_python_strings_and_comments(src_path: Path) -> str:
-    """Tokenize ``src_path`` and return the source with all string
-    literals (docstrings + plain strings) and all comments removed.
+class _PyGithubLabelCallFinder(ast.NodeVisitor):
+    """AST visitor that flags ``obj.<method>(...)`` calls where
+    ``<method>`` is a PyGithub label-write method.
 
-    The grep fence searches the result. This keeps the test from
-    flagging mentions in docstrings (the manager's own docstring
-    legitimately references the forbidden symbols), without needing a
-    name-based allowlist."""
-    out_chunks: list[str] = []
-    with tokenize.open(str(src_path)) as f:
-        try:
-            tokens = list(tokenize.generate_tokens(f.readline))
-        except (tokenize.TokenError, IndentationError):
-            # Token errors usually mean an incomplete file mid-edit;
-            # fall back to raw source so the test is still informative.
-            with src_path.open("r", encoding="utf-8") as raw:
-                return raw.read()
-    for tok in tokens:
-        if tok.type in (tokenize.COMMENT, tokenize.STRING, tokenize.FSTRING_START,
-                        tokenize.FSTRING_MIDDLE, tokenize.FSTRING_END):
-            continue
-        out_chunks.append(tok.string)
-        out_chunks.append(" ")
-    return "".join(out_chunks)
+    Crucially, we only flag method *calls* (``Call(func=Attribute)``).
+    Method *definitions* (``def set_labels(self, ...): ...``) and bare
+    identifier uses are NOT flagged — those are the project's own
+    abstraction (e.g. ``ReconcilerHost.set_labels``), not the PyGithub
+    call surface.
+    """
+
+    def __init__(self) -> None:
+        self.hits: list[tuple[int, str]] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in _FORBIDDEN_PYGITHUB_METHODS:
+            self.hits.append((node.lineno, func.attr))
+        self.generic_visit(node)
 
 
 class TestLabelWritesOnlyGoThroughLabelManager:
     """The single-import-point enforcement. Only :mod:`label_manager`
     + the two thin PyGithub wrappers in :mod:`daemon_host` and
     :mod:`git_hosts.github` may call PyGithub's label-write
-    methods."""
+    methods.
 
-    def test_no_forbidden_symbol_outside_allowlist(self) -> None:
+    Uses AST rather than substring search so we don't trip on the
+    project's OWN ``def set_labels(self, ...)`` methods (e.g. on
+    :class:`~foreman.reconciler.host.ReconcilerHost`) — those are
+    intentional abstractions that the manager itself routes through.
+    Only ``obj.set_labels(...)`` *invocations* count as PyGithub-side
+    label writes.
+    """
+
+    def test_no_pygithub_label_call_outside_allowlist(self) -> None:
         src_root = (
             Path(__file__).resolve().parent.parent / "src" / "foreman"
         )
         assert src_root.is_dir(), f"src root not found: {src_root}"
 
-        offenders: list[tuple[str, str]] = []
+        offenders: list[tuple[str, int, str]] = []
         for path in src_root.rglob("*.py"):
-            # `rel_to_pkg` is the path relative to the ``foreman``
-            # package root (e.g. ``daemon_host.py``, ``roles/worker.py``).
-            # We prefix ``foreman/`` to match the canonical allowlist
-            # strings in label_manager.py.
             rel_to_pkg = path.relative_to(src_root).as_posix()
             allowlist_key = f"foreman/{rel_to_pkg}"
             if allowlist_key in _LABEL_WRITER_GREP_ALLOWLIST:
                 continue
 
-            stripped = _strip_python_strings_and_comments(path)
-            for sym in _FORBIDDEN_SYMBOLS:
-                if re.search(rf"\b{re.escape(sym)}\b", stripped):
-                    offenders.append((allowlist_key, sym))
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            finder = _PyGithubLabelCallFinder()
+            finder.visit(tree)
+            for lineno, attr in finder.hits:
+                offenders.append((allowlist_key, lineno, attr))
 
         assert offenders == [], (
-            "Files outside the allowlist must not reference PyGithub label-write "
-            "symbols (add_to_labels / remove_from_labels / set_labels). "
-            "Route through LabelManager().transition(...) instead. "
-            f"Offenders: {offenders}"
+            "Files outside the allowlist must not call PyGithub's label-write "
+            "methods (add_to_labels / remove_from_labels / set_labels). Route "
+            "through LabelManager().transition(...) instead.\n"
+            f"Offenders (file, line, method): {offenders}"
         )
 
 
