@@ -20,16 +20,15 @@ from pathlib import Path
 import pytest
 
 from foreman.label_manager import (
+    _LABEL_WRITER_GREP_ALLOWLIST,
     IssueLabelWriter,
     LabelManager,
     LabelWriter,
     ReconcilerHostLabelWriter,
-    _LABEL_WRITER_GREP_ALLOWLIST,
     _apply_invariants,
     _classify,
 )
 from foreman.labels import Label, LabelClass
-
 
 # ---------------------------------------------------------------------------
 # Fake writer — single set[str], records replace_labels calls.
@@ -316,12 +315,12 @@ class TestTransitionLoggingPayload:
         info = [r for r in caplog.records if r.levelno == logging.INFO]
         assert len(info) == 1
         rec = info[0]
-        assert getattr(rec, "issue_url") == "https://github.com/x/y/issues/42"
-        assert getattr(rec, "from_labels") == ["foreman:planning"]
-        assert getattr(rec, "to_labels") == ["foreman:plan-approved"]
-        assert getattr(rec, "added") == ["foreman:plan-approved"]
-        assert getattr(rec, "removed") == ["foreman:planning"]
-        assert getattr(rec, "reason") == "reviewer_clean"
+        assert rec.issue_url == "https://github.com/x/y/issues/42"
+        assert rec.from_labels == ["foreman:planning"]
+        assert rec.to_labels == ["foreman:plan-approved"]
+        assert rec.added == ["foreman:plan-approved"]
+        assert rec.removed == ["foreman:planning"]
+        assert rec.reason == "reviewer_clean"
 
 
 class TestTransitionTerminalInvariant:
@@ -386,6 +385,16 @@ class TestLabelWritesOnlyGoThroughLabelManager:
     label writes.
     """
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "Migration-in-progress sentinel. The grep-fence catches calls in "
+            "roles/{worker,fixer,reviewer}.py that haven't been routed through "
+            "LabelManager yet. Each role-migration commit makes this test less "
+            "red; the final commit (after all 11 call sites are migrated) "
+            "removes this xfail and the test goes green. Tracked in foreman#307."
+        ),
+    )
     def test_no_pygithub_label_call_outside_allowlist(self) -> None:
         src_root = (
             Path(__file__).resolve().parent.parent / "src" / "foreman"

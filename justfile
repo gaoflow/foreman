@@ -34,8 +34,12 @@ typecheck:
 # R1 contract's ``forbidden_modules = ["tests"]`` reference resolves.
 # Without it, grimp's graph walker never visits the test tree and the rule
 # would silently no-op against a ``from tests import X`` line in src/.
+#
+# The Python wrapper sets PYTHONPATH cross-platform. The old shell-prefix
+# form ``PYTHONPATH=... uv run ...`` broke on Windows cmd.exe (caught while
+# running the foreman#307 LabelManager pre-push gate, 2026-06-13).
 import-linter:
-    PYTHONPATH=packages/foreman uv run --no-sync lint-imports
+    uv run --no-sync python scripts/run_import_linter.py
 
 # Tests
 test:

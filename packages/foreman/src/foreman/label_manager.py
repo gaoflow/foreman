@@ -41,10 +41,10 @@ from foreman.labels import (
     BLOCKING_LABELS,
     COUNTER_LABELS,
     IN_FLIGHT_LABELS,
-    Label,
-    LabelClass,
     QUEUE_LABELS,
     TERMINAL_LABELS,
+    Label,
+    LabelClass,
 )
 
 logger = logging.getLogger("foreman.label_manager")
@@ -276,7 +276,7 @@ class IssueLabelWriter:
     the live remote state, not a stale local copy.
     """
 
-    def __init__(self, issue) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, issue) -> None:
         # No PyGithub type annotation: keeps this module importable
         # without PyGithub at typecheck-time and matches the style of
         # the existing daemon_host.py wrappers.
@@ -305,7 +305,7 @@ class ReconcilerHostLabelWriter:
     both are added to the protocol as part of this PR.
     """
 
-    def __init__(self, host, *, owner: str, repo: str, issue: int) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, host, *, owner: str, repo: str, issue: int) -> None:
         self._host = host
         self._owner = owner
         self._repo = repo
